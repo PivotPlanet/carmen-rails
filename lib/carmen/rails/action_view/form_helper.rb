@@ -162,11 +162,7 @@ module ActionView
       private
 
       def instance_tag(object_name, method_name, template_object, options = {})
-        if Rails::VERSION::MAJOR == 3
-          InstanceTag.new(object_name, method_name, template_object, options.delete(:object))
-        else
-          ActionView::Helpers::Tags::Base.new(object_name, method_name, template_object, options || {})
-        end
+        ActionView::Helpers::Tags::Base.new(object_name, method_name, template_object, options || {})
       end
 
 
@@ -184,44 +180,58 @@ module ActionView
       end
     end
 
-    if Rails::VERSION::MAJOR == 3
-      class InstanceTag
+    module Tags
+      module SelectRenderer
+        def self.placeholder_required?(html_options)
+          # See https://html.spec.whatwg.org/multipage/forms.html#attr-select-required
+          html_options["required"] && !html_options["multiple"] && html_options.fetch("size", 1).to_i == 1
+        end
+
+        def self.add_options(option_tags, options, value = nil)
+          tag_builder = ::ActionView::Helpers::TagHelper::TagBuilder.new(self)
+
+          if options[:include_blank]
+            content = (options[:include_blank] if options[:include_blank].is_a?(String))
+            label = (" " unless content)
+            option_tags = tag_builder.content_tag_string("option", content, value: "", label: label) + "\n" + option_tags
+          end
+
+          if value.blank? && options[:prompt]
+            tag_options = { value: "" }.tap do |prompt_opts|
+              prompt_opts[:disabled] = true if options[:disabled] == ""
+              prompt_opts[:selected] = true if options[:selected] == ""
+            end
+            option_tags = tag_builder.content_tag_string("option", prompt_text(options[:prompt]), tag_options) + "\n" + option_tags
+          end
+
+          option_tags
+        end
+      end
+
+      class Base
+        include SelectRenderer
+        include FormOptionsHelper
+
         def to_region_select_tag(parent_region, options = {}, html_options = {})
           html_options = html_options.stringify_keys
           add_default_name_and_id(html_options)
+
+          if SelectRenderer.placeholder_required?(html_options)
+            raise ArgumentError, "include_blank cannot be false for a required field." if options[:include_blank] == false
+            options[:include_blank] ||= true unless options[:prompt]
+          end
+
+          value = options[:selected] ? options[:selected] : (method(:value).arity.zero? ? value() : value(object))
           priority_regions = options[:priority] || []
-          value = options[:selected] ? options[:selected] : value(object)
-          opts = add_options(region_options_for_select(parent_region.subregions, value, :priority => priority_regions), options, value)
-          content_tag("select", opts, html_options)
-        end
-      end
-    end
-
-    if [4, 5, 6, 7].include? Rails::VERSION::MAJOR
-      module Tags
-        class Base
-          def to_region_select_tag(parent_region, options = {}, html_options = {})
-            html_options = html_options.stringify_keys
-            add_default_name_and_id(html_options)
-
-            if (Rails::VERSION::MAJOR == 4 && !select_not_required?(html_options)) ||
-               ([5, 6, 7].include?(Rails::VERSION::MAJOR) && placeholder_required?(html_options))
-              raise ArgumentError, "include_blank cannot be false for a required field." if options[:include_blank] == false
-              options[:include_blank] ||= true unless options[:prompt]
-            end
-
-            value = options[:selected] ? options[:selected] : (method(:value).arity.zero? ? value() : value(object))
-            priority_regions = options[:priority] || []
-            opts = add_options(region_options_for_select(parent_region.subregions, value, 
-                                                        :priority => priority_regions), 
-                               options, value)
-            select = content_tag("select", opts, html_options)
-            if html_options["multiple"] && options.fetch(:include_hidden, true)
-              tag("input", :disabled => html_options["disabled"], :name => html_options["name"], 
-                           :type => "hidden", :value => "") + select
-            else
-              select
-            end
+          opts = SelectRenderer.add_options(region_options_for_select(parent_region.subregions, value, 
+                                                      :priority => priority_regions), 
+                              options, value)
+          select = content_tag("select", opts, html_options)
+          if html_options["multiple"] && options.fetch(:include_hidden, true)
+            tag("input", :disabled => html_options["disabled"], :name => html_options["name"], 
+                          :type => "hidden", :value => "") + select
+          else
+            select
           end
         end
       end

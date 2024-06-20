@@ -1,6 +1,6 @@
 require 'test_helper'
 
-class CarmenViewHelperTest < MiniTest::Test
+class CarmenViewHelperTest < Minitest::Test
   include ActionView::Helpers::FormOptionsHelper
   include ActionView::Helpers::FormTagHelper
 

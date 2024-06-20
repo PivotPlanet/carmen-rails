@@ -1,3 +1,8 @@
+### 1.1
+
+* add support for Rails 7.1
+* remove support for Rails version lower than 5
+
 ### 1.0.1
 
 * Rails 4 compatibility.
